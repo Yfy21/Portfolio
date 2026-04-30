@@ -27,7 +27,11 @@
 | ![Logistics page](screenshots/logistics.png) | ![RFM page](screenshots/customer-segmentation.png) |
 
 > **RLS in action:** Regional managers see only their territory.
-> View examples: [West Region](screenshots/rls-west.png) | [South Region](screenshots/rls-south.png)
+> View examples:
+
+| West Region | South Region |
+|----------|----------------------|
+![West Region](screenshots/rls-west.png) | ![South Region](screenshots/rls-south.png)
 
 ---
 
