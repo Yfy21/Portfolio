@@ -56,9 +56,9 @@ A normalized star schema with 9 tables, built to be fast, maintainable, and RLS-
 
 **Key modeling decisions:**
 - **References, not Duplicates** in Power Query — all dimension tables chain from a single `Source Table` so cleaning steps apply only once.
-- **Role-playing geography dimensions** — `dim_geo_ship` (full history of order locations) and `dim_geo_cust` (last known customer address) are two copies of the same geography dimension. While `dim_geo_cust` provides customer context, `dim_geo_ship` serves as the main geographic dimension, allowing for geographic analysis. It serves also as a security dimension, filtering the fact table via RLS (Row-Level Security) to enforce territory-based access control.
+- **Role-playing geography dimensions** — `dim_geo_ship` is the primary geography dimension, connecting to `Fact_Sales` on the orders geo ID and serving as the RLS filter anchor that restricts regional managers to their assigned territory. `dim_geo_cust` is a dedicated copy of `dim_geo_ship`, connected to `dim_customers` to represent where each customer currently lives — kept separate so customer location analysis remains independent of shipping geography.
 - **Role-playing date dimensions** — `dim_order_dates` (active) and `dim_ship_dates` (inactive) allow time intelligence on both order date and ship date using `USERELATIONSHIP()` in DAX measures.
-- **`Table.Buffer()` before dedup** — The product source data has a quality issue: some Product IDs map to multiple product names. To resolve this, products are sorted descending by order date so the most recent name wins, then duplicates are removed (~={red}a solução não foi esta. Acho que a ordenação foi por causa do endereço dos clientes=~). Power Query's lazy-evaluation engine can silently skip intermediate sorting steps during cloud refresh, producing non-deterministic dedup results. Wrapping the sorted table in `Table.Buffer()` forces the sort to fully evaluate before the dedup step runs.
+- **`Table.Buffer()` before dedup** — `dim_customers` is built by deduplicating the source on Customer ID, keeping each customer's most recent row to capture their current shipping address. Before deduplication, the table is sorted descending by order date — but Power Query's lazy-evaluation engine can silently skip intermediate sorting steps during cloud refresh, producing non-deterministic dedup results. Wrapping the sorted table in `Table.Buffer()` forces the sort to fully evaluate before the dedup step runs.
 
 ---
 
@@ -127,7 +127,7 @@ RFM Segment =
 Regional managers see only their territory. Executives see everything. Implemented using `USERPRINCIPALNAME()` + a disconnected security mapping table (`rls_security_mapping`) queried at runtime via `LOOKUPVALUE()` — the same pattern used in production Power BI deployments.
 
 ```dax
--- Applied to dim_geo_cust table:
+-- Applied to dim_geo_ship table:
 VAR CurrentUserRegion = LOOKUPVALUE(
     'rls_security_mapping'[Region],
     'rls_security_mapping'[Email], USERPRINCIPALNAME()
