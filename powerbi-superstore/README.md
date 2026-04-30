@@ -20,13 +20,14 @@
 
 | Overview | Product Profitability |
 |----------|----------------------|
-| ![Overview page](screenshots/page-overview.png) | ![Profitability page](screenshots/page-profitability.png) |
+| ![Overview page](screenshots/overview.png) | ![Profitability page](screenshots/product-profitability.png) |
 
 | Logistics & Operations | Customer Intelligence (RFM) |
 |------------------------|----------------------------|
-| ![Logistics page](screenshots/page-logistics.png) | ![RFM page](screenshots/page-rfm.png) |
+| ![Logistics page](screenshots/logistics.png) | ![RFM page](screenshots/customer-segmentation.png) |
 
-> **RLS in action:** Regional managers see only their territory. [View as Role screenshots →](screenshots/)
+> **RLS in action:** Regional managers see only their territory.
+> View examples: [West Region](screenshots/rls-west.png) | [South Region](screenshots/rls-south.png)
 
 ---
 
@@ -46,46 +47,13 @@ This report answers all four, with filters that travel consistently across every
 ## Data Model
 
 A normalized star schema with 9 tables, built to be fast, maintainable, and RLS-ready.
+![Data Model](screenshots/data-model.png)
 
-> 💡 *For a faithful representation, consider replacing the diagram below with a screenshot of the Power BI model view (`screenshots/data-model.png`) or an export from [dbdiagram.io](https://dbdiagram.io).*
-
-```
-                     ┌─────────────────┐
-                     │   Fact_Sales    │
-                     │─────────────────│
-              ┌──────│ Order Date Key  │──────┐
-              │      │ Ship Date Key   │      │
-              │      │ Customer ID     │      │
-              │      │ GeoKey (ship)   │      │
-              │      │ Product ID      │      │
-              │      │ Sales, Profit   │      │
-              │      │ Quantity, Disc. │      │
-              └──────┤ Ship Mode       ├──────┘
-                     └────────┬────────┘
-                              │
-       ┌──────────────────────┼──────────────────────┐
-       │                      │                      │
-┌──────▼──────┐   ┌───────────▼───────┐   ┌─────────▼────────┐
-│dim_order_   │   │  dim_customers    │   │  dim_products    │
-│dates        │   │───────────────────│   │──────────────────│
-│(also used   │   │ Customer ID       │   │ Product ID       │
-│for ship via │   │ Customer Name     │   │ Category         │
-│USERRELATION)│   │ Segment           │   │ Sub-Category     │
-└─────────────┘   │ RFM scores        │   │ Product Name     │
-                  │ RFM Segment       │   └──────────────────┘
-┌─────────────┐   └────────┬──────────┘
-│dim_geo_ship │            │                ┌──────────────────────┐
-│(warehouse   │   ┌────────▼──────────┐     │  rls_security_mapping│
-│ geography)  │   │  dim_geo_cust     │     │  (disconnected)      │
-└─────────────┘   │  (customer terr.) │     │  Email, Role,        │
-                  └───────────────────┘     │  Region, Country     │
-                                            └──────────────────────┘
-```
 
 **Key modeling decisions:**
-- **Role-playing geography dimensions** — `dim_geo_ship` (full history of order locations) and `dim_geo_cust` (last known customer address) are two copies of the same geography dimension, each anchored to a different foreign key in `Fact_Sales` (~={red}Acho que isto está errado=~). Row Level Security is applied to `dim_geo_ship` to restrict managers to their territory.
+- **References, not Duplicates** in Power Query — all dimension tables chain from a single `Source Table` so cleaning steps apply only once.
+- **Role-playing geography dimensions** — `dim_geo_ship` (full history of order locations) and `dim_geo_cust` (last known customer address) are two copies of the same geography dimension. While `dim_geo_cust` provides customer context, `dim_geo_ship` serves as the main geographic dimension, allowing for geographic analysis. It serves also as a security dimension, filtering the fact table via RLS (Row-Level Security) to enforce territory-based access control.
 - **Role-playing date dimensions** — `dim_order_dates` (active) and `dim_ship_dates` (inactive) allow time intelligence on both order date and ship date using `USERELATIONSHIP()` in DAX measures.
-- **Reference, not Duplicate** in Power Query — all dimension tables chain from a single `Source Table` so cleaning steps apply only once.
 - **`Table.Buffer()` before dedup** — The product source data has a quality issue: some Product IDs map to multiple product names. To resolve this, products are sorted descending by order date so the most recent name wins, then duplicates are removed (~={red}a solução não foi esta. Acho que a ordenação foi por causa do endereço dos clientes=~). Power Query's lazy-evaluation engine can silently skip intermediate sorting steps during cloud refresh, producing non-deterministic dedup results. Wrapping the sorted table in `Table.Buffer()` forces the sort to fully evaluate before the dedup step runs.
 
 ---
@@ -94,19 +62,23 @@ A normalized star schema with 9 tables, built to be fast, maintainable, and RLS-
 
 ### Page 1 — Overview
 Sales and profit performance at a glance: KPI cards with YoY growth references, revenue trend over time, sales by sub-category, segment breakdown, and a customer location map.
-![Overview page](screenshots/page-overview.png)
+
+![Overview page](screenshots/overview.png)
 
 ### Page 2 — Product Profitability
 A 4-quadrant scatter plot (Total Profit × Profit Margin %) divided by median lines reveals four product archetypes: **All Stars** ⭐, **Volume Fillers**, **Cash Cows**, and **Profit Drains** 🚨. Drill levels: Category → Sub-Category → Product Name. Negative-profit sub-categories shown as an unfiltered bar chart (no arbitrary "Bottom 5" cutoff).
-![Profitability page](screenshots/page-profitability.png)
+
+![Profitability page](screenshots/product-profitability.png)
 
 ### Page 3 — Logistics & Operations
 Shipping performance KPIs with YoY deltas, average days to ship by mode, and a geographic map with a dynamic tooltip that shows state or city name based on drill level, plus the top 5 sub-categories by sales for that location.
-![Logistics page](screenshots/page-logistics.png)
+
+![Logistics page](screenshots/logistics.png)
 
 ### Page 4 — Customer Intelligence (RFM)
 Point-in-time customer segmentation across 10 tiers. No year slicer — this page is a snapshot, not a trend. A drillable treemap breaks segments down by customer type; a matrix surfaces individual customer metrics.
-![RFM page](screenshots/page-rfm.png)
+
+![RFM page](screenshots/customer-segmentation.png)
 
 ---
 
@@ -144,7 +116,7 @@ RFM Segment =
     )
 ```
 
----
+
 
 ### Dynamic Row Level Security (RLS)
 
@@ -162,7 +134,7 @@ RETURN
 
 > **RLS in action:** Side-by-side screenshots showing West Manager vs. East Manager views. [View RLS screenshots →](screenshots/)
 
----
+
 
 ### DAX Measures Library (30+)
 
@@ -176,6 +148,7 @@ All measures live in a single `_Key Measures` table, organized into display fold
 | `4. Time Intelligence` | Sales/Profit/Orders YoY Growth %, Margin YoY Variance, Avg Days to Ship YoY, Active Cities YoY |
 | `5. Logistics` | *(verify contents)* |
 | `6. Color Flags` | Product Status Color, Sales/Profit/Orders YoY Color, Margin YoY Color |
+| `7. UI & System` | Active User Profile, Data Vintage |
 
 **Profitability**
 ```dax
@@ -199,6 +172,7 @@ Margin YoY Variance = [Profit Margin %] - CALCULATE([Profit Margin %], SAMEPERIO
 ```
 
 **Color Flags** — KPI cards use DAX-driven conditional formatting with explicit thresholds (±10% for sales, orders, and profit; ±5pp for margin). One glance at any card reveals report health:
+
 ```dax
 Sales YoY Color =
     IF([Sales YoY Growth %] > 0.10,  "#1F3A5F",   -- Strong growth: deep blue
@@ -207,13 +181,73 @@ Sales YoY Color =
     "#DF745C")))                                    -- Significant decline: coral
 ```
 
----
+
 
 ### Power Query Architecture
 
 - **Dynamic date dimension** spanning `MIN(Order Date, Ship Date)` through `MAX(Order Date, Ship Date)` — no hardcoded year boundaries
 - **`dim_customers` built via Table.Group** — Frequency counts distinct Order IDs (not rows), Recency anchored to `List.Max(Order Date) + 1 day`
 - **Surrogate key for products** — Superstore's Product ID maps to multiple names; a compound `(Product ID + Product Name)` key resolves the data quality issue
+
+
+
+### Enterprise Navigation Panel
+
+The dark blue left panel serves as both the report's control center and a live proof of concept for several advanced features. Every page shares the same panel, giving the report a web-application feel rather than a standard spreadsheet export.
+
+**Panel layout (top to bottom):**
+
+| Position | Element |
+|----------|---------|
+| Top | Company logo (embedded SVG — infinite scaling, zero file bloat) |
+| Below logo | Dynamic RLS identity card |
+| Middle | Custom page navigator |
+| Lower middle | Slicers (Region, Year, Segment, etc.) |
+| Below slicers | Clear Filters reset button |
+| Bottom | Data vintage anchor |
+
+**How it was built — key decisions:**
+
+**Default tabs hidden.** Except for Overview, all report pages are hidden from the standard Power BI tab bar. The only navigation path is the custom Page Navigator visual in the panel, formatted with hover and selected-state effects. From the user's perspective, the report behaves like a coded web app.
+
+**Dynamic RLS identity card.** A transparent Card visual displays the logged-in user's name and assigned territory, proving that Row Level Security is active without any backend explanation. Built with `CONCATENATEX` instead of `LOOKUPVALUE` so it handles managers assigned to multiple regions without throwing a multiple-values error:
+
+```dax
+Active User Profile =
+VAR CurrentEmail = USERPRINCIPALNAME()
+VAR CurrentName =
+    CALCULATE(MAX('rls_security_mapping'[Name]),
+              'rls_security_mapping'[email] = CurrentEmail)
+VAR AssignedRegionList =
+    CALCULATETABLE(VALUES('rls_security_mapping'[region]),
+                   'rls_security_mapping'[email] = CurrentEmail)
+VAR RegionString =
+    CONCATENATEX(AssignedRegionList, 'rls_security_mapping'[region], ", ")
+RETURN
+SWITCH(TRUE(),
+    ISBLANK(RegionString), "System Admin"  & UNICHAR(10) & "Unrestricted",
+    RegionString = "All",  CurrentName & UNICHAR(10) & "Executive (Global)",
+    CurrentName & UNICHAR(10) & RegionString & " Region(s)"
+)
+```
+
+`UNICHAR(10)` forces a line break between name and region. The Card background is set to transparent so it sinks into the panel color.
+
+**Clear Filters — data-only bookmark.** A reset button wired to a bookmark that has only the *Data* state checked (Display and Current Page are off). Unlike the native "Clear all slicers" action, this resets the full data state — including map click-selections and cross-filter highlights from charts — in a single click. New visuals added to the panel in the future are unaffected because the bookmark ignores the display layer entirely.
+
+**Data vintage (Power Query timestamp).** A dedicated `Data Vintage Info` table is created in Power Query so the refresh timestamp is stamped at load time, not at query time:
+
+```m
+= #table({"Last Refresh"}, {{DateTimeZone.SwitchZone(DateTimeZone.UtcNow(), -3, 0)}})
+```
+
+The column type is cast to `Date/Time` (stripping the timezone metadata) before reaching DAX, so `FORMAT()` applies correctly. The measure reads the static table, meaning the timestamp only advances when the dataset actually refreshes — not when a user clicks a filter.
+
+```dax
+Data Vintage =
+VAR RefreshTime = MAX('Data Vintage Info'[Last Refresh])
+RETURN "Data Refreshed: " & FORMAT(RefreshTime, "MMM dd, yyyy")
+```
 
 ---
 
